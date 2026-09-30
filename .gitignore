@@ -1,0 +1,26 @@
+# Generated artifacts. Regenerate with `make all`.
+figures/
+reports/tables/
+reports/*.html
+
+# Why not .gitignore everything? The README embeds figures/*.png, so a reader
+# who clones the repo without running the pipeline still sees the results.
+# Uncomment the block above and run `make all` before the first commit if you
+# would rather track nothing generated.
+#
+#   figures/
+#   reports/tables/
+
+_targets/
+data/raw/
+.Rhistory
+.RData
+.Rproj.user/
+
+# secrets / local
+.env
+.envrc
+*.local
+.DS_Store
+
+# Do NOT ignore figures/ or reports/tables/ -- see the note above.
