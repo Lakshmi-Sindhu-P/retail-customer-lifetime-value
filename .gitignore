@@ -24,3 +24,6 @@ data/raw/
 .DS_Store
 
 # Do NOT ignore figures/ or reports/tables/ -- see the note above.
+
+# stray base-R graphics device output
+Rplots.pdf
