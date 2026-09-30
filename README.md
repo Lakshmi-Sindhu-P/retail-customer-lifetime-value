@@ -205,16 +205,27 @@ check-session` prints what the pipeline was built against.
 ### Endpoints
 
 ```
-GET  /health          model metadata, including whether the Weibull was accepted
-GET  /segments        segment-level CLV summary
-POST /predict-clv     score one customer
-GET  /customers/:id   look up a scored customer
+GET  /health                 model metadata, including whether the Weibull was accepted
+GET  /segments               segment-level CLV summary
+POST /predict-clv            score one customer from age_weeks / frequency / avg_order_value
+GET  /customers?id=<id>      look up a scored customer
 ```
 
 ```bash
+# score a customer: 40 weeks since first purchase, 10 orders, £100 average
 curl -s localhost:8000/predict-clv \
   -d 'age_weeks=40' -d 'frequency=10' -d 'avg_order_value=100'
+# -> {"expected_remaining_weeks":46.389, "expected_transactions":11.5972,
+#     "value_per_transaction":100, "predicted_clv":579.86, ...}
+
+curl -s 'localhost:8000/customers?id=12347'
+# -> {"segment":"Segment 2", "frequency":7, "monetary":4310, "predicted_clv":2122.63, ...}
 ```
+
+`/customers` takes a query string rather than the more idiomatic
+`/customers/:id` because path parameters do not bind at all in plumber 1.2.3
+under R 4.6 — a route declared with `:id` registers but always 404s. That was
+confirmed against a minimal reproduction and is documented in `api/plumber.R`.
 
 ---
 
