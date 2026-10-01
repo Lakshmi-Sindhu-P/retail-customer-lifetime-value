@@ -211,7 +211,7 @@ CI (`.github/workflows/ci.yml`) restores the lockfile, runs the 192 tests and
 the full pipeline on every push, and asserts the headline numbers — so a
 silent regression fails the build instead of reaching a slide. The build badge:
 
-[![ci](https://github.com/Lakshmi-Sindhu-P/CSP-571-Customer-Segmentation/actions/workflows/ci.yml/badge.svg)](https://github.com/Lakshmi-Sindhu-P/CSP-571-Customer-Segmentation/actions/workflows/ci.yml)
+[![ci](https://github.com/Lakshmi-Sindhu-P/retail-customer-lifetime-value/actions/workflows/ci.yml/badge.svg)](https://github.com/Lakshmi-Sindhu-P/retail-customer-lifetime-value/actions/workflows/ci.yml)
 
 ### Endpoints
 
@@ -299,6 +299,9 @@ what the data says*. That's the habit worth keeping.
 ## Licence
 
 MIT. Dataset: UCI Online Retail II, CC BY 4.0.
-The original 44-slide project presentation is archived at
+The original 44-slide course presentation is archived at
 `docs/original-presentation.pdf`; where it disagrees with this README, this
 README is correct.
+
+Originally a CSP-571 course project; the repo was renamed and the analysis
+rebuilt after the original submission was found not to run.
