@@ -17,10 +17,13 @@ all: ## Run the full analysis pipeline
 
 data: ## Download the source dataset only
 	@mkdir -p data/raw
-	@curl -sSL -o data/raw/online_retail_II.xlsx \
+	@curl -sSL --retry 3 -o data/raw/uci-online-retail-ii.zip \
 		"https://archive.ics.uci.edu/static/public/502/online+retail+ii.zip" \
 		|| (echo "download failed; see R/01_data.R::fetch_data()" && exit 1)
-	@echo "dataset ready"
+	@# The URL serves a .zip containing the .xlsx; extract before renaming, or
+	@# read_excel() fails with "Couldn't find '_rels/.rels'".
+	@cd data/raw && unzip -o -q uci-online-retail-ii.zip && rm -f uci-online-retail-ii.zip
+	@echo "dataset ready:" && ls -la data/raw/
 
 test: ## Run the unit test suite
 	$(R) -e 'testthat::test_dir("tests", reporter = "summary")'
