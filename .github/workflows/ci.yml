@@ -23,6 +23,23 @@ jobs:
         with:
           cache-version: 1
 
+      - name: Install system libraries
+        # igraph (a targets dependency) needs libglpk; sodium needs
+        # libsodium; rmarkdown needs pandoc. Without these, renv::restore()
+        # fails at "error testing if 'igraph' can be loaded".
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libglpk-dev \
+            libsodium-dev \
+            libxml2-dev \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libpng-dev \
+            libtiff5-dev \
+            libjpeg-dev \
+            pandoc
+
       - name: Verify the lockfile restores cleanly
         run: |
           Rscript -e 'renv::restore(prompt = FALSE)'
@@ -30,6 +47,16 @@ jobs:
 
       - name: Run unit tests
         run: Rscript -e 'testthat::test_dir("tests", reporter = "summary")'
+
+      - name: Fetch the source dataset
+        # R/01_data.R::fetch_data() does this automatically; doing it as an
+        # explicit step makes the 45 MB download visible in the log rather
+        # than looking like a hang inside tar_make().
+        run: |
+          mkdir -p data/raw
+          curl -sSL --retry 3 -o data/raw/online_retail_II.xlsx \
+            "https://archive.ics.uci.edu/static/public/502/online+retail+ii.zip"
+          ls -la data/raw/
 
       - name: Run the full pipeline
         # Fails the build if any target errors. This is what stops a broken
