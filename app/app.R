@@ -6,9 +6,27 @@ library(shiny)
 library(dplyr)
 library(ggplot2)
 
-source(file.path("..", "R", "00_config.R"))
-source(file.path("..", "R", "utils.R"))
+# Run `make all` before launching: the dashboard reads the fitted artefacts
+# rather than refitting anything.
+#
+# shiny::runApp() changes the working directory to app/ before sourcing this
+# file, so the helper is located by trying both layouts rather than assuming
+# one. set_project_root() then normalises the working directory to the repo
+# root, which is what targets::tar_load() needs.
+for (p in c(file.path("R", "root.R"), file.path("..", "R", "root.R"))) {
+  if (file.exists(p)) { source(p); break }
+}
+if (!exists("set_project_root")) {
+  stop("Could not locate R/root.R. Run the dashboard from the repo root.")
+}
+set_project_root()
 
+source("R/00_config.R")
+source("R/utils.R")
+
+if (!dir.exists(file.path("_targets", "objects"))) {
+  stop("No targets data store found. Run `make all` first.")
+}
 targets::tar_load(c(clv_tbl, clv_summary, results, customers))
 
 PAL <- PALETTE
@@ -16,6 +34,16 @@ seg_cols <- setNames(
   c(PAL[["primary"]], PAL[["secondary"]], PAL[["accent"]],
     PAL[["warn"]], PAL[["neutral"]]),
   levels(factor(results$clv_summary$segment)))
+
+# A titled panel. shiny::box() is no longer exported by shiny (it lives in
+# shinydashboard / bs4), so use a plain bootstrap column.
+panel_box <- function(title, ..., width = 6) {
+  column(
+    width,
+    div(class = "well",
+        tags$strong(title), div(...))
+  )
+}
 
 app <- shinyApp(
   ui = fluidPage(
@@ -35,19 +63,17 @@ app <- shinyApp(
         downloadButton("csv", "Download segment as CSV")
       ),
       mainPanel(
+        width = 10,
+        fluidRow(uiOutput("kpis")),
         fluidRow(
-          uiOutput("kpis")
+          column(7, div(class = "well", plotOutput("clv_plot", height = "340px"))),
+          column(5, div(class = "well", plotOutput("scatter", height = "340px")))
         ),
         fluidRow(
-          box(width = 7, plotOutput("clv_plot", height = "340px")),
-          box(width = 5, plotOutput("scatter", height = "340px"))
+          column(12, div(class = "well", plotOutput("retention", height = "300px")))
         ),
         fluidRow(
-          box(width = 12, plotOutput("retention", height = "300px"))
-        ),
-        fluidRow(
-          box(width = 12,
-              tableOutput("seg_table"))
+          column(12, div(class = "well", tableOutput("seg_table")))
         )
       )
     )
@@ -67,15 +93,16 @@ app <- shinyApp(
     output$kpis <- renderUI({
       d <- scaled() %>% filter(segment == input$segment)
       n <- nrow(d)
+      stat_tile <- function(label, value) {
+        column(3, div(class = "well",
+                      tags$strong(label), tags$br(),
+                      tags$span(class = "h4", value)))
+      }
       fluidRow(
-        box(title = "Customers", width = 3,
-            h4(format(n, big.mark = ","))),
-        box(title = "Share of base", width = 3,
-            h4(paste0(round(100 * n / nrow(scaled()), 1), "%"))),
-        box(title = "Total predicted CLV", width = 3,
-            h4(paste0(fmt_money(sum(d$clv) / 1e6, 2), "M"))),
-        box(title = "Median CLV per customer", width = 3,
-            h4(fmt_money(median(d$clv))))
+        stat_tile("Customers", format(n, big.mark = ",")),
+        stat_tile("Share of base", paste0(round(100 * n / nrow(scaled()), 1), "%")),
+        stat_tile("Total predicted CLV", paste0(fmt_money(sum(d$clv) / 1e6, 2), "M")),
+        stat_tile("Median CLV per customer", fmt_money(median(d$clv)))
       )
     })
 
@@ -143,4 +170,8 @@ app <- shinyApp(
   }
 )
 
-shinyApp(app)
+# shiny::runApp() uses the file's last value as the app object. `app` is
+# already a shiny.appobj from the shinyApp() call above, so returning it
+# directly is correct -- re-wrapping with shinyApp(app) passes the appobj as
+# `ui` and fails with "argument server is missing".
+app

@@ -5,17 +5,34 @@
 #   Rscript -e 'pr <- plumber::plumb("api/plumber.R"); pr$run(port = 8000)'
 #
 # Endpoints
-#   GET  /health          liveness + model metadata
-#   GET  /segments        segment-level CLV summary
-#   POST /predict-clv     score one customer from raw RFM inputs
-#   GET  /customers/:id   look up a scored customer
+#   GET  /health               liveness + model metadata
+#   GET  /segments             segment-level CLV summary
+#   POST /predict-clv          score one customer from raw RFM inputs
+#   GET  /customers?id=<id>    look up a scored customer
 
 library(plumber)
 
-source(file.path("..", "R", "00_config.R"))
-source(file.path("..", "R", "utils.R"))
-source(file.path("..", "R", "05_clv.R"))
+# Run `make all` before starting the service: this reads the fitted artefacts
+# rather than refitting.
+#
+# Locate the helper by trying both layouts, because `make api` and
+# `plumb("api/plumber.R")` leave the working directory in different places.
+# set_project_root() then normalises it, which is what targets::tar_load() needs.
+for (p in c(file.path("R", "root.R"), file.path("..", "R", "root.R"))) {
+  if (file.exists(p)) { source(p); break }
+}
+if (!exists("set_project_root")) {
+  stop("Could not locate R/root.R. Run `make api` from the repo root.")
+}
+set_project_root()
 
+source("R/00_config.R")
+source("R/utils.R")
+source("R/05_clv.R")
+
+if (!dir.exists(file.path("_targets", "objects"))) {
+  stop("No targets data store found. Run `make all` first.")
+}
 targets::tar_load(c(clv_tbl, results, km_survival))
 
 #* Return model metadata and health status
@@ -44,32 +61,58 @@ function() {
 }
 
 #* Score a single customer
-#*
-#* @param age_weeks Numeric weeks since the customer's FIRST purchase. This is
-#*   what the lifetime model is indexed by.
-#* @param frequency Numeric number of distinct orders.
-#* @param avg_order_value Numeric mean order value.
-#* @param still_active Logical. FALSE means churn was observed, in which case
-#*   predicted CLV is 0.
+#* @param age_weeks:number Weeks since the customer's FIRST purchase (the lifetime model is indexed by this).
+#* @param frequency:number Number of distinct orders.
+#* @param avg_order_value:number Mean order value.
+#* @param still_active:boolean FALSE means churn was observed, so predicted CLV is 0.
+#* @param horizon_weeks:number Forecast horizon; defaults to the fitted horizon.
 #* @post /predict-clv
-function(age_weeks = NULL, frequency = NULL, avg_order_value = NULL,
+function(req, res, age_weeks = NULL, frequency = NULL, avg_order_value = NULL,
          still_active = TRUE, horizon_weeks = NULL) {
+
+  # Validation failures set the status on `res` and return a body rather than
+  # throwing. plumber maps an uncaught condition to 500 regardless of the
+  # status attached to it, so this is the supported way to return a 4xx.
+  bad <- function(msg) {
+    res$status <- 400L
+    list(error = msg, valid = FALSE)
+  }
+
   if (is.null(age_weeks) || is.null(frequency) || is.null(avg_order_value)) {
-    stop("age_weeks, frequency and avg_order_value are required", status = 400)
+    return(bad("age_weeks, frequency and avg_order_value are required"))
   }
-  if (any(c(age_weeks, frequency, avg_order_value) < 0)) {
-    stop("numeric inputs must be non-negative", status = 400)
+
+  # POST form fields arrive as character strings, so coerce before any
+  # arithmetic. max(1, "40") would otherwise fail on a character comparison.
+  num <- function(x, name) {
+    v <- suppressWarnings(as.numeric(x))
+    if (length(v) != 1 || is.na(v)) NULL else v
   }
-  if (frequency < 1) {
-    stop("frequency must be at least 1", status = 400)
-  }
+  age_weeks <- num(age_weeks, "age_weeks")
+  frequency <- num(frequency, "frequency")
+  avg_order_value <- num(avg_order_value, "avg_order_value")
+  if (is.null(age_weeks))  return(bad("age_weeks must be a single number"))
+  if (is.null(frequency))  return(bad("frequency must be a single number"))
+  if (is.null(avg_order_value)) return(bad("avg_order_value must be a single number"))
+
   if (is.null(horizon_weeks)) horizon_weeks <- CFG$clv_horizon_weeks
+  horizon_weeks <- num(horizon_weeks, "horizon_weeks")
+  if (is.null(horizon_weeks)) return(bad("horizon_weeks must be a single number"))
+
+  # still_active may arrive as the string "false", which is truthy in R.
+  still_active <- if (is.logical(still_active)) still_active else
+    !(tolower(as.character(still_active)) %in% c("false", "0", "no", ""))
+
+  if (any(c(age_weeks, frequency, avg_order_value, horizon_weeks) < 0)) {
+    return(bad("numeric inputs must be non-negative"))
+  }
+  if (frequency < 1) return(bad("frequency must be at least 1"))
 
   d <- data.frame(
     CustomerID = 1L,
     age_weeks = max(1, age_weeks),
     since_last_weeks = 0,
-    still_active = isTRUE(still_active),
+    still_active = still_active,
     rate = frequency / max(1, age_weeks),
     frequency = frequency,
     monetary = frequency * avg_order_value,
@@ -93,11 +136,24 @@ function(age_weeks = NULL, frequency = NULL, avg_order_value = NULL,
 }
 
 #* Look up a scored customer by ID
-#* @param id Customer ID (integer)
-#* @get /customers/:id
-function(id) {
-  row <- clv_tbl %>% filter(CustomerID == as.integer(id))
-  if (nrow(row) == 0) stop("customer not found", status = 404)
+#*
+#' Note: this is a query-string endpoint (`/customers?id=12347`), not the more
+#' idiomatic `/customers/:id`. Path parameters do not bind at all in plumber
+#' 1.2.3 under R 4.6 -- a route declared as `/customers/:id` is registered but
+#' always 404s, verified against a minimal reproduction. Query parameters bind
+#' correctly, so this uses them until that is fixed upstream.
+#' @param id:string Customer ID (integer).
+#* @get /customers
+function(req, res, id = NULL) {
+  if (is.null(id)) {
+    res$status <- 400L
+    return(list(error = "id is required", valid = FALSE))
+  }
+  row <- clv_tbl %>% filter(CustomerID == suppressWarnings(as.integer(id)))
+  if (nrow(row) == 0) {
+    res$status <- 404L
+    return(list(error = "customer not found", valid = FALSE))
+  }
   list(
     CustomerID = row$CustomerID[1],
     segment = as.character(row$segment[1]),
