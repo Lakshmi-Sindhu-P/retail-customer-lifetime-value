@@ -49,17 +49,13 @@ jobs:
       - name: Run unit tests
         run: Rscript -e 'testthat::test_dir("tests", reporter = "summary")'
 
-      - name: Fetch the source dataset
-        # R/01_data.R::fetch_data() does this automatically; doing it as an
-        # explicit step makes the 45 MB download visible in the log rather
-        # than looking like a hang inside tar_make().
-        run: |
-          mkdir -p data/raw
-          curl -sSL --retry 3 -o data/raw/online_retail_II.xlsx \
-            "https://archive.ics.uci.edu/static/public/502/online+retail+ii.zip"
-          ls -la data/raw/
-
       - name: Run the full pipeline
+        # R/01_data.R::fetch_data() downloads and unzips the dataset on
+        # demand, so there is no separate fetch step to drift out of sync
+        # with it. (An earlier version of this workflow fetched the UCI .zip
+        # to a file named .xlsx without extracting it, and read_excel failed
+        # with "Couldn't find '_rels/.rels'" -- the same bug as in `make data`.)
+        #
         # Fails the build if any target errors. This is what stops a broken
         # analysis from being merged -- the original project reached a
         # presentation with eight empty code cells and no way to tell.
