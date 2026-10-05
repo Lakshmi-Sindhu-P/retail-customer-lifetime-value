@@ -19,14 +19,11 @@ jobs:
         with:
           use-public-rspm: true
 
-      - uses: r-lib/actions/setup-renv@v2
-        with:
-          cache-version: 1
-
       - name: Install system libraries
-        # igraph (a targets dependency) needs libglpk; sodium needs
-        # libsodium; rmarkdown needs pandoc. Without these, renv::restore()
-        # fails at "error testing if 'igraph' can be loaded".
+        # MUST run before setup-renv. That action restores the library itself,
+        # so a missing system dependency fails inside the action and the apt
+        # step below it never executes. igraph (a targets dependency) needs
+        # libglpk; sodium needs libsodium; rmarkdown needs pandoc.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -39,6 +36,10 @@ jobs:
             libtiff5-dev \
             libjpeg-dev \
             pandoc
+
+      - uses: r-lib/actions/setup-renv@v2
+        with:
+          cache-version: 1
 
       - name: Verify the lockfile restores cleanly
         run: |
