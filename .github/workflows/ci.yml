@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: restore, unit tests, full pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-renv@v2
+        with:
+          cache-version: 1
+
+      - name: Verify the lockfile restores cleanly
+        run: |
+          Rscript -e 'renv::restore(prompt = FALSE)'
+          Rscript -e 'cat(R.version.string, "\n")'
+
+      - name: Run unit tests
+        run: Rscript -e 'testthat::test_dir("tests", reporter = "summary")'
+
+      - name: Run the full pipeline
+        # Fails the build if any target errors. This is what stops a broken
+        # analysis from being merged -- the original project reached a
+        # presentation with eight empty code cells and no way to tell.
+        run: Rscript -e 'targets::tar_make()'
+
+      - name: Confirm outputs were produced
+        run: |
+          test -f figures/retention-curve.png
+          test -f figures/clv-by-segment.png
+          test -f reports/tables/diagnostics.md
+          ls -1 figures | wc -l
+
+      - name: Assert the headline numbers still hold
+        # A cheap guard against a silent regression in the analysis. If the
+        # pipeline ever starts producing different results, this fails loudly
+        # instead of letting a changed number reach a slide.
+        run: |
+          Rscript -e '
+            targets::tar_load(c(results, clv_tbl))
+            stopifnot(results$K == 2)
+            stopifnot(nrow(clv_tbl) == 4331)
+            stopifnot(round(mean(results$survival_check$abs_gap), 2) == 0.31)
+            cat("headline checks passed\n")'
