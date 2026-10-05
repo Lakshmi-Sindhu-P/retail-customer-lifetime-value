@@ -261,6 +261,8 @@ this analysis could silently lie:
   on recency instead of age, reading the censoring flag backwards, measuring
   rate over calendar tenure, and dropping the survival-conditioning term.
 
+The test suite was written with AI coding assistance.
+
 Reproducibility: `targets` caches every stage, the random seed is fixed in
 `CFG$seed`, and **no number in this README is typed by hand** — tables and
 figures are generated into `reports/tables/` and `figures/`.
