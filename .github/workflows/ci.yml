@@ -71,7 +71,12 @@ jobs:
           # started with, so check the artefact rather than trust the exit code.
           test -s reports/analysis.html
           test $(wc -c < reports/analysis.html) -gt 500000
-          grep -q "Weibull fit was rejected" reports/analysis.html
+          # Assert on structure and computed values, not on prose. The renderer
+          # wraps heading text across lines, so a phrase match on a heading is
+          # brittle; table values and embedded images are not.
+          test $(grep -o 'data:image/png;base64' reports/analysis.html | wc -l) -ge 5
+          grep -q '4,331' reports/analysis.html
+          grep -q '6.9M' reports/analysis.html
           ls -1 figures | wc -l
 
       - name: Assert the headline numbers still hold
