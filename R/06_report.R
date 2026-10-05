@@ -329,26 +329,41 @@ write_report_tables <- function(results, customers, by_country, by_month,
 # ---- Report ------------------------------------------------------------------
 
 #' Render the analysis report to HTML
-render_report <- function(results, tables) {
-  dir.create("reports", showWarnings = FALSE, recursive = TRUE)
-  rmd <- file.path("reports", "analysis.Rmd")
+render_report <- function(results, tables, rmd = "reports/analysis.Rmd") {
+  # These are errors, not skips. The previous version logged "skipping render"
+  # and returned NA, which targets reported as a completed target producing no
+  # output -- the same silent-success failure as the empty code chunks in the
+  # original notebook. A missing or unrenderable report must fail the pipeline.
   if (!file.exists(rmd)) {
-    log_step("no reports/analysis.Rmd found; skipping render")
-    return(NA_character_)
+    stop("report source missing: ", rmd,
+         ". The report target must either render or fail loudly.")
   }
   if (!requireNamespace("rmarkdown", quietly = TRUE)) {
-    log_step("rmarkdown not installed; skipping render")
-    return(NA_character_)
+    stop("rmarkdown is not installed; cannot render the report.")
   }
-  log_step("rendering report")
-  out <- tryCatch(
-    rmarkdown::render(rmd, output_dir = "reports", quiet = TRUE,
-                      envir = new.env(parent = globalenv())),
-    error = function(e) {
-      warning("report render failed: ", conditionMessage(e))
-      NA_character_
-    }
+
+  # The report cannot call tar_load() itself: targets forbids reading the data
+  # store from inside a running target. Objects are injected here instead, via
+  # render()'s envir argument.
+  env <- new.env(parent = globalenv())
+  env$results      <- results
+  env$tables       <- tables
+  # rmarkdown knits with the working directory set to the .Rmd's own folder, so
+  # any path in the report must be absolute. Inject the project root rather
+  # than letting the report guess.
+  env$project_root <- normalizePath(".")
+
+  log_step("rendering %s", rmd)
+  out <- rmarkdown::render(
+    rmd,
+    output_dir = "reports",
+    quiet = TRUE,
+    envir = env
   )
-  if (!is.na(out)) log_step("wrote %s", out)
+
+  if (!file.exists(out)) {
+    stop("rmarkdown::render() returned without producing ", out)
+  }
+  log_step("wrote %s (%.0f KB)", out, file.size(out) / 1024)
   out
 }

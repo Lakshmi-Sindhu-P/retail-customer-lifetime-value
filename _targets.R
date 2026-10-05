@@ -211,6 +211,12 @@ list(
 
   tar_target(figures, write_figures(lines, results, clv_tbl)),
 
-  tar_target(report, render_report(results, tables))
+  # Declared with format = "file" so editing analysis.Rmd invalidates this
+  # target's cache. Without it the report silently kept rendering the previous
+  # version, because targets hashes a target's inputs -- not arbitrary files
+  # it happens to read.
+  tar_target(report_source, "reports/analysis.Rmd", format = "file"),
+
+  tar_target(report, render_report(results, tables, report_source))
 
 )

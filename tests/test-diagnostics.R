@@ -184,3 +184,53 @@ test_that("evaluate_partition catches the dimension bug it is guarding against",
   expect_equal(ev$n_train + ev$n_test, 200)
   expect_equal(ev$n_test, floor(0.3 * 200))
 })
+
+test_that("render_report fails loudly instead of silently skipping", {
+  # Regression test for the last silent-success defect in this project: the
+  # report target logged "no analysis.Rmd found; skipping render" and returned
+  # NA, and targets reported it as a COMPLETED target that produced nothing.
+  # That is structurally the same failure as the eight empty code cells in the
+  # original notebook, so it gets the same treatment.
+  skip_if_not_installed("rmarkdown")
+
+  missing <- file.path(tempdir(), "definitely-not-here.Rmd")
+  expect_error(
+    render_report(results = list(), tables = list(), rmd = missing),
+    "report source missing"
+  )
+})
+
+test_that("render_report is declared with a tracked file input", {
+  # Without format = "file" on the report source target, editing the .Rmd
+  # leaves the cached HTML untouched, because targets hashes a target's
+  # declared inputs rather than arbitrary files it reads at render time.
+  # testthat runs with tests/ as the working directory, so resolve from root.
+  targets <- readLines(file.path(project_root(), "_targets.R"), warn = FALSE)
+  src <- grep('tar_target\\s*\\(\\s*report_source', targets, value = TRUE)
+  expect_length(src, 1)
+  expect_match(src, 'format\\s*=\\s*"file"')
+
+  dep <- grep('tar_target\\s*\\(\\s*report\\b', targets, value = TRUE)
+  expect_length(dep, 1)
+  expect_match(dep, "report_source")
+})
+
+test_that("the report source exists and every figure it embeds does too", {
+  # The report references figures by absolute path. If one is renamed or
+  # dropped, the report would render with a broken image rather than failing.
+  rmd <- file.path(project_root(), "reports", "analysis.Rmd")
+  expect_true(file.exists(rmd))
+
+  # Figures are referenced as file.path(PROJ, "figures", "<name>.png"), so the
+  # directory and filename are separate string arguments.
+  src <- paste(readLines(rmd, warn = FALSE), collapse = "\n")
+  refs <- regmatches(src, gregexpr(
+    'file\\.path\\(PROJ, "figures", "([^"]+)"\\)', src))[[1]]
+  refs <- unique(gsub('.*"([^"]+)".*', '\\1', refs))
+  expect_gte(length(refs), 5)
+
+  for (r in refs) {
+    expect_true(file.exists(file.path(project_root(), "figures", r)),
+                info = paste("report references missing figure:", r))
+  }
+})

@@ -12,7 +12,9 @@ data/raw/
 # these two lines and re-run `make all` -- but the README images will 404
 # until someone regenerates them.
 #
-# reports/*.html is the rendered report and is not tracked; it is reproducible.
+# reports/analysis.Rmd (the source) and reports/analysis.html (the render) are
+# both tracked, so a reader can view the report without running anything.
+# Regenerate both with `make all`; never edit either by hand.
 
 .Rhistory
 .RData

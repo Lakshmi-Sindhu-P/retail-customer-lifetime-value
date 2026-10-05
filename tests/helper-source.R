@@ -28,8 +28,10 @@ project_root <- function() {
 
 #' Source every module in dependency order
 load_project <- function(root = project_root()) {
-  files <- c("00_config.R", "utils.R", "01_data.R", "02_features.R",
-             "03_rfm.R", "04_cluster.R", "05_clv.R")
+  # 06_report.R is included so render_report() is testable: its "must not
+  # silently skip" behaviour is one of the regression tests.
+  files <- c("00_config.R", "root.R", "utils.R", "01_data.R", "02_features.R",
+             "03_rfm.R", "04_cluster.R", "05_clv.R", "06_report.R")
   for (f in files) source(file.path(root, "R", f), local = FALSE)
   invisible(root)
 }

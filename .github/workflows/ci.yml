@@ -66,6 +66,12 @@ jobs:
           test -f figures/retention-curve.png
           test -f figures/clv-by-segment.png
           test -f reports/tables/diagnostics.md
+          # The report must exist and be substantial. A target that renders
+          # nothing while reporting success is the exact failure this project
+          # started with, so check the artefact rather than trust the exit code.
+          test -s reports/analysis.html
+          test $(wc -c < reports/analysis.html) -gt 500000
+          grep -q "Weibull fit was rejected" reports/analysis.html
           ls -1 figures | wc -l
 
       - name: Assert the headline numbers still hold
